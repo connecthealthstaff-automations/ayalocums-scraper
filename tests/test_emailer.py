@@ -88,6 +88,100 @@ class TestBuildTable:
         assert "ayalocums.com/job/locum-physician/3236627" in html
 
 
+def make_contact(**kwargs) -> dict:
+    defaults = {
+        "contact_name": "Dr. Jane Smith, MD",
+        "contact_title": "Chief Medical Officer",
+        "contact_email": "jane.smith@carilionclinic.org",
+        "contact_email_basis": "pattern-guessed from domain",
+        "contact_phone": "(540) 731-2000",
+        "contact_linkedin": None,
+        "contact_confidence": "medium",
+        "contact_reasoning": "CMO is standard for locum coverage",
+        "research_summary": "146-bed community hospital in Christiansburg",
+    }
+    return {**defaults, **kwargs}
+
+
+class TestBuildTableContactColumns:
+    """Verify Decision-Maker and Contact columns render correctly."""
+
+    def test_contact_name_appears_in_html(self):
+        import emailer
+        job = make_enriched_job(contact=make_contact())
+        html = emailer.build_table([job])
+        assert "Dr. Jane Smith, MD" in html
+
+    def test_contact_title_appears_in_html(self):
+        import emailer
+        job = make_enriched_job(contact=make_contact())
+        html = emailer.build_table([job])
+        assert "Chief Medical Officer" in html
+
+    def test_contact_email_renders_as_mailto_link(self):
+        import emailer
+        job = make_enriched_job(contact=make_contact())
+        html = emailer.build_table([job])
+        assert 'href="mailto:jane.smith@carilionclinic.org"' in html
+
+    def test_contact_phone_appears_in_html(self):
+        import emailer
+        job = make_enriched_job(contact=make_contact())
+        html = emailer.build_table([job])
+        assert "(540) 731-2000" in html
+
+    def test_missing_contact_shows_em_dash(self):
+        import emailer
+        # Job has no contact dict at all
+        job = make_enriched_job()
+        html = emailer.build_table([job])
+        # Should render without crashing and show em dash placeholders
+        assert "&mdash;" in html
+
+    def test_fallback_contact_all_empty_shows_em_dash(self):
+        import emailer
+        empty_contact = {
+            "contact_name": "",
+            "contact_title": "",
+            "contact_email": "",
+            "contact_phone": None,
+            "contact_confidence": "none",
+        }
+        job = make_enriched_job(contact=empty_contact)
+        html = emailer.build_table([job])
+        assert "&mdash;" in html
+
+    def test_invalid_email_falls_back_to_em_dash(self):
+        import emailer
+        bad_contact = make_contact(contact_email="unable to guess")
+        job = make_enriched_job(contact=bad_contact)
+        html = emailer.build_table([job])
+        assert "unable to guess" not in html
+
+    def test_html_escapes_malicious_contact_name(self):
+        import emailer
+        bad_contact = make_contact(contact_name="<script>alert(1)</script>")
+        job = make_enriched_job(contact=bad_contact)
+        html = emailer.build_table([job])
+        assert "<script>alert(1)</script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_table_has_decision_maker_and_contact_headers(self):
+        import emailer
+        html = emailer.build_table([make_enriched_job(contact=make_contact())])
+        assert "Decision-Maker" in html
+        assert "<th" in html and "Contact</th>" in html
+
+    def test_table_still_has_link_column_last(self):
+        """New columns inserted before Link, not after."""
+        import emailer
+        html = emailer.build_table([make_enriched_job(contact=make_contact())])
+        # Link column should still be present and last in headers
+        link_idx = html.find(">Link</th>")
+        contact_idx = html.find(">Contact</th>")
+        assert link_idx > contact_idx
+
+
 class TestBuildSuccessEmail:
     def test_subject_includes_count(self):
         import emailer
